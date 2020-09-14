@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 
 from model import Query2box
 from dataloader import *
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import time
 import pickle
 import collections
@@ -60,7 +60,7 @@ def parse_args(args=None):
                         help='Otherwise use subsampling weighting like in word2vec')
     
     parser.add_argument('-lr', '--learning_rate', default=0.0001, type=float)
-    parser.add_argument('-cpu', '--cpu_num', default=10, type=int)
+    parser.add_argument('-cpu', '--cpu_num', default=0, type=int)
     parser.add_argument('-init', '--init_checkpoint', default=None, type=str)
     parser.add_argument('-save', '--save_path', default=None, type=str)
     parser.add_argument('--max_steps', default=100000, type=int)
@@ -510,7 +510,7 @@ def main(args):
                 TrainDataset(train_triples, nentity, nrelation, args.negative_sample_size, train_ans, 'tail-batch'), 
                 batch_size=args.batch_size,
                 shuffle=True, 
-                num_workers=max(1, args.cpu_num),
+                num_workers=max(0, args.cpu_num),
                 collate_fn=TrainDataset.collate_fn
             )
             train_iterator = SingledirectionalOneShotIterator(train_dataloader_tail, train_triples[0][-1])
@@ -520,7 +520,7 @@ def main(args):
                 TrainDataset(train_triples_2, nentity, nrelation, args.negative_sample_size, train_ans, 'tail-batch'), 
                 batch_size=args.batch_size,
                 shuffle=True, 
-                num_workers=max(1, args.cpu_num),
+                num_workers=max(0, args.cpu_num),
                 collate_fn=TrainDataset.collate_fn
             )
             train_iterator_2 = SingledirectionalOneShotIterator(train_dataloader_2_tail, train_triples_2[0][-1])
@@ -530,7 +530,7 @@ def main(args):
                 TrainDataset(train_triples_3, nentity, nrelation, args.negative_sample_size, train_ans, 'tail-batch'), 
                 batch_size=args.batch_size,
                 shuffle=True, 
-                num_workers=max(1, args.cpu_num),
+                num_workers=max(0, args.cpu_num),
                 collate_fn=TrainDataset.collate_fn
             )
             train_iterator_3 = SingledirectionalOneShotIterator(train_dataloader_3_tail, train_triples_3[0][-1])
@@ -540,7 +540,7 @@ def main(args):
                 TrainInterDataset(train_triples_2i, nentity, nrelation, args.negative_sample_size, train_ans, 'tail-batch'), 
                 batch_size=args.batch_size,
                 shuffle=True, 
-                num_workers=max(1, args.cpu_num),
+                num_workers=max(0, args.cpu_num),
                 collate_fn=TrainInterDataset.collate_fn
             )
             train_iterator_2i = SingledirectionalOneShotIterator(train_dataloader_2i_tail, train_triples_2i[0][-1])
@@ -550,7 +550,7 @@ def main(args):
                 TrainInterDataset(train_triples_3i, nentity, nrelation, args.negative_sample_size, train_ans, 'tail-batch'), 
                 batch_size=args.batch_size,
                 shuffle=True, 
-                num_workers=max(1, args.cpu_num),
+                num_workers=max(0, args.cpu_num),
                 collate_fn=TrainInterDataset.collate_fn
             )
             train_iterator_3i = SingledirectionalOneShotIterator(train_dataloader_3i_tail, train_triples_3i[0][-1])

@@ -923,7 +923,7 @@ class Query2box(nn.Module):
                     'tail-batch'
                 ), 
                 batch_size=args.test_batch_size,
-                num_workers=max(1, args.cpu_num), 
+                num_workers=max(0, args.cpu_num),
                 collate_fn=TestDataset.collate_fn
             )
         elif qtype == 'chain-inter':
@@ -937,7 +937,7 @@ class Query2box(nn.Module):
                     'tail-batch'
                 ), 
                 batch_size=args.test_batch_size,
-                num_workers=max(1, args.cpu_num), 
+                num_workers=max(0, args.cpu_num),
                 collate_fn=TestDataset.collate_fn
             )
         elif 'inter' in qtype or 'union' in qtype:
@@ -951,7 +951,7 @@ class Query2box(nn.Module):
                     'tail-batch'
                 ), 
                 batch_size=args.test_batch_size,
-                num_workers=max(1, args.cpu_num), 
+                num_workers=max(0, args.cpu_num),
                 collate_fn=TestDataset.collate_fn
             )
         else:
@@ -965,7 +965,7 @@ class Query2box(nn.Module):
                     'tail-batch'
                 ), 
                 batch_size=args.test_batch_size,
-                num_workers=max(1, args.cpu_num), 
+                num_workers=max(0, args.cpu_num),
                 collate_fn=TestDataset.collate_fn
             )
 
