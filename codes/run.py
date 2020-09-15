@@ -15,7 +15,7 @@ import torch
 
 from torch.utils.data import DataLoader
 
-from model import Query2box
+from model import Query2box, RQA
 from dataloader import *
 from torch.utils.tensorboard import SummaryWriter
 import time
@@ -468,40 +468,42 @@ def main(args):
         logging.info('#valid_uc: %d' % len(valid_triples_uc))
         logging.info('#test_uc: %d' % len(test_triples_uc))
 
-
-    query2box = Query2box(
-        model_name=args.model,
-        nentity=nentity,
-        nrelation=nrelation,
-        hidden_dim=args.hidden_dim,
-        gamma=args.gamma,
-        writer=writer,
-        geo=args.geo,
-        cen=args.center_reg,
-        offset_deepsets = args.offset_deepsets,
-        center_deepsets = args.center_deepsets,
-        offset_use_center = args.offset_use_center,
-        center_use_offset = args.center_use_offset,
-        att_reg = args.att_reg,
-        off_reg = args.off_reg,
-        att_tem = args.att_tem,
-        euo = args.entity_use_offset,
-        gamma2 = args.gamma2,
-        bn = args.bn,
-        nat = args.n_att,
-        activation = args.activation
-    )
+    if args.model == 'RQA':
+        model = RQA('test', nentity, nrelation, args.hidden_dim)
+    else:
+        model = Query2box(
+            model_name=args.model,
+            nentity=nentity,
+            nrelation=nrelation,
+            hidden_dim=args.hidden_dim,
+            gamma=args.gamma,
+            writer=writer,
+            geo=args.geo,
+            cen=args.center_reg,
+            offset_deepsets = args.offset_deepsets,
+            center_deepsets = args.center_deepsets,
+            offset_use_center = args.offset_use_center,
+            center_use_offset = args.center_use_offset,
+            att_reg = args.att_reg,
+            off_reg = args.off_reg,
+            att_tem = args.att_tem,
+            euo = args.entity_use_offset,
+            gamma2 = args.gamma2,
+            bn = args.bn,
+            nat = args.n_att,
+            activation = args.activation
+        )
     
     logging.info('Model Parameter Configuration:')
     num_params = 0
-    for name, param in query2box.named_parameters():
+    for name, param in model.named_parameters():
         logging.info('Parameter %s: %s, require_grad = %s' % (name, str(param.size()), str(param.requires_grad)))
         if param.requires_grad:
             num_params += np.prod(param.size())
     logging.info('Parameter Number: %d' % num_params)
 
     if args.cuda:
-        query2box = query2box.cuda()
+        model = model.cuda()
     
     if args.do_train:
         # Set training dataloader iterator
@@ -558,7 +560,7 @@ def main(args):
         # Set training configuration
         current_learning_rate = args.learning_rate
         optimizer = torch.optim.Adam(
-            filter(lambda p: p.requires_grad, query2box.parameters()), 
+            filter(lambda p: p.requires_grad, model.parameters()),
             lr=current_learning_rate
         )
         if args.warm_up_steps:
@@ -571,7 +573,7 @@ def main(args):
         logging.info('Loading checkpoint %s...' % args.init_checkpoint)
         checkpoint = torch.load(os.path.join(args.init_checkpoint, 'checkpoint'))
         init_step = checkpoint['step']
-        query2box.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint['model_state_dict'])
         if args.do_train:
             current_learning_rate = checkpoint['current_learning_rate']
             warm_up_steps = checkpoint['warm_up_steps']
@@ -605,21 +607,21 @@ def main(args):
         average_ex_metrics = collections.defaultdict(list)
         average_u_metrics = collections.defaultdict(list)
         if '2i' in tasks:
-            metrics = query2box.test_step(query2box, test_triples_2i, test_ans, test_ans_hard, args)
+            metrics = Query2box.test_step(model, test_triples_2i, test_ans, test_ans_hard, args)
             log_metrics('Test 2i', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Test_2i_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_i_metrics[metric].append(metrics[metric])
         if '3i' in tasks:
-            metrics = query2box.test_step(query2box, test_triples_3i, test_ans, test_ans_hard, args)
+            metrics = Query2box.test_step(model, test_triples_3i, test_ans, test_ans_hard, args)
             log_metrics('Test 3i', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Test_3i_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_i_metrics[metric].append(metrics[metric])
         if '2c' in tasks:
-            metrics = query2box.test_step(query2box, test_triples_2, test_ans, test_ans_hard, args)
+            metrics = Query2box.test_step(model, test_triples_2, test_ans, test_ans_hard, args)
             log_metrics('Test 2c', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Test_2c_'+metric, metrics[metric], step)
@@ -627,7 +629,7 @@ def main(args):
                 average_c_metrics[metric].append(metrics[metric])
                 average_c2_metrics[metric].append(metrics[metric])
         if '3c' in tasks:
-            metrics = query2box.test_step(query2box, test_triples_3, test_ans, test_ans_hard, args)
+            metrics = Query2box.test_step(model, test_triples_3, test_ans, test_ans_hard, args)
             log_metrics('Test 3c', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Test_3c_'+metric, metrics[metric], step)
@@ -635,35 +637,35 @@ def main(args):
                 average_c_metrics[metric].append(metrics[metric])
                 average_c2_metrics[metric].append(metrics[metric])
         if '1c' in tasks:
-            metrics = query2box.test_step(query2box, test_triples, test_ans, test_ans_hard, args)
+            metrics = Query2box.test_step(model, test_triples, test_ans, test_ans_hard, args)
             log_metrics('Test 1c', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Test_1c_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_c_metrics[metric].append(metrics[metric])
         if 'ci' in tasks:
-            metrics = query2box.test_step(query2box, test_triples_ci, test_ans, test_ans_hard, args)
+            metrics = Query2box.test_step(model, test_triples_ci, test_ans, test_ans_hard, args)
             log_metrics('Test ci', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Test_ci_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_ex_metrics[metric].append(metrics[metric])
         if 'ic' in tasks:
-            metrics = query2box.test_step(query2box, test_triples_ic, test_ans, test_ans_hard, args)
+            metrics = Query2box.test_step(model, test_triples_ic, test_ans, test_ans_hard, args)
             log_metrics('Test ic', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Test_ic_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_ex_metrics[metric].append(metrics[metric])
         if '2u' in tasks:
-            metrics = query2box.test_step(query2box, test_triples_2u, test_ans, test_ans_hard, args)
+            metrics = Query2box.test_step(model, test_triples_2u, test_ans, test_ans_hard, args)
             log_metrics('Test 2u', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Test_2u_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_u_metrics[metric].append(metrics[metric])
         if 'uc' in tasks:
-            metrics = query2box.test_step(query2box, test_triples_uc, test_ans, test_ans_hard, args)
+            metrics = Query2box.test_step(model, test_triples_uc, test_ans, test_ans_hard, args)
             log_metrics('Test uc', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Test_uc_'+metric, metrics[metric], step)
@@ -690,21 +692,21 @@ def main(args):
         average_ex_metrics = collections.defaultdict(list)
         average_u_metrics = collections.defaultdict(list)
         if '2i' in tasks:
-            metrics = query2box.test_step(query2box, valid_triples_2i, valid_ans, valid_ans_hard, args)
+            metrics = Query2box.test_step(model, valid_triples_2i, valid_ans, valid_ans_hard, args)
             log_metrics('Valid 2i', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Valid_2i_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_i_metrics[metric].append(metrics[metric])
         if '3i' in tasks:
-            metrics = query2box.test_step(query2box, valid_triples_3i, valid_ans, valid_ans_hard, args)
+            metrics = Query2box.test_step(model, valid_triples_3i, valid_ans, valid_ans_hard, args)
             log_metrics('Valid 3i', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Valid_3i_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_i_metrics[metric].append(metrics[metric])
         if '2c' in tasks:
-            metrics = query2box.test_step(query2box, valid_triples_2, valid_ans, valid_ans_hard, args)
+            metrics = Query2box.test_step(model, valid_triples_2, valid_ans, valid_ans_hard, args)
             log_metrics('Valid 2c', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Valid_2c_'+metric, metrics[metric], step)
@@ -712,7 +714,7 @@ def main(args):
                 average_c_metrics[metric].append(metrics[metric])
                 average_c2_metrics[metric].append(metrics[metric])
         if '3c' in tasks:
-            metrics = query2box.test_step(query2box, valid_triples_3, valid_ans, valid_ans_hard, args)
+            metrics = Query2box.test_step(model, valid_triples_3, valid_ans, valid_ans_hard, args)
             log_metrics('Valid 3c', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Valid_3c_'+metric, metrics[metric], step)
@@ -720,35 +722,35 @@ def main(args):
                 average_c_metrics[metric].append(metrics[metric])
                 average_c2_metrics[metric].append(metrics[metric])
         if '1c' in tasks:
-            metrics = query2box.test_step(query2box, valid_triples, valid_ans, valid_ans_hard, args)
+            metrics = Query2box.test_step(model, valid_triples, valid_ans, valid_ans_hard, args)
             log_metrics('Valid 1c', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Valid_1c_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_c_metrics[metric].append(metrics[metric])
         if 'ci' in tasks:
-            metrics = query2box.test_step(query2box, valid_triples_ci, valid_ans, valid_ans_hard, args)
+            metrics = Query2box.test_step(model, valid_triples_ci, valid_ans, valid_ans_hard, args)
             log_metrics('Valid ci', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Valid_ci_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_ex_metrics[metric].append(metrics[metric])
         if 'ic' in tasks:
-            metrics = query2box.test_step(query2box, valid_triples_ic, valid_ans, valid_ans_hard, args)
+            metrics = Query2box.test_step(model, valid_triples_ic, valid_ans, valid_ans_hard, args)
             log_metrics('Valid ic', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Valid_ic_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_ex_metrics[metric].append(metrics[metric])
         if '2u' in tasks:
-            metrics = query2box.test_step(query2box, valid_triples_2u, valid_ans, valid_ans_hard, args)
+            metrics = Query2box.test_step(model, valid_triples_2u, valid_ans, valid_ans_hard, args)
             log_metrics('Valid 2u', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Valid_2u_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_u_metrics[metric].append(metrics[metric])
         if 'uc' in tasks:
-            metrics = query2box.test_step(query2box, valid_triples_uc, valid_ans, valid_ans_hard, args)
+            metrics = Query2box.test_step(model, valid_triples_uc, valid_ans, valid_ans_hard, args)
             log_metrics('Valid uc', step, metrics)
             for metric in metrics:
                 writer.add_scalar('Valid_uc_'+metric, metrics[metric], step)
@@ -773,21 +775,21 @@ def main(args):
         average_c2_metrics = collections.defaultdict(list)
         average_i_metrics = collections.defaultdict(list)
         if '2i' in tasks:
-            metrics = query2box.test_step(query2box, train_triples_2i, train_ans, train_ans, args)
+            metrics = model.test_step(model, train_triples_2i, train_ans, train_ans, args)
             log_metrics('train 2i', step, metrics)
             for metric in metrics:
                 writer.add_scalar('train_2i_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_i_metrics[metric].append(metrics[metric])
         if '3i' in tasks:
-            metrics = query2box.test_step(query2box, train_triples_3i, train_ans, train_ans, args)
+            metrics = model.test_step(model, train_triples_3i, train_ans, train_ans, args)
             log_metrics('train 3i', step, metrics)
             for metric in metrics:
                 writer.add_scalar('train_3i_'+metric, metrics[metric], step)
                 average_metrics[metric].append(metrics[metric])
                 average_i_metrics[metric].append(metrics[metric])
         if '2c' in tasks:
-            metrics = query2box.test_step(query2box, train_triples_2, train_ans, train_ans, args)
+            metrics = model.test_step(model, train_triples_2, train_ans, train_ans, args)
             log_metrics('train 2c', step, metrics)
             for metric in metrics:
                 writer.add_scalar('train_2c_'+metric, metrics[metric], step)
@@ -795,7 +797,7 @@ def main(args):
                 average_c_metrics[metric].append(metrics[metric])
                 average_c2_metrics[metric].append(metrics[metric])
         if '3c' in tasks:
-            metrics = query2box.test_step(query2box, train_triples_3, train_ans, train_ans, args)
+            metrics = model.test_step(model, train_triples_3, train_ans, train_ans, args)
             log_metrics('train 3c', step, metrics)
             for metric in metrics:
                 writer.add_scalar('train_3c_'+metric, metrics[metric], step)
@@ -803,7 +805,7 @@ def main(args):
                 average_c_metrics[metric].append(metrics[metric])
                 average_c2_metrics[metric].append(metrics[metric])
         if '1c' in tasks:
-            metrics = query2box.test_step(query2box, train_triples, train_ans, train_ans, args)
+            metrics = model.test_step(model, train_triples, train_ans, train_ans, args)
             log_metrics('train 1c', step, metrics)
             for metric in metrics:
                 writer.add_scalar('train_1c_'+metric, metrics[metric], step)
@@ -834,31 +836,31 @@ def main(args):
 
             if step >= begin_pq_step and not args.train_onehop_only:
                 if '2i' in tasks:
-                    log = query2box.train_step(query2box, optimizer, train_iterator_2i, args, step)
+                    log = model.train_step(model, optimizer, train_iterator_2i, args, step)
                     for metric in log:
                         writer.add_scalar('2i_'+metric, log[metric], step)
                     training_logs.append(log)
                 
                 if '3i' in tasks:
-                    log = query2box.train_step(query2box, optimizer, train_iterator_3i, args, step)
+                    log = model.train_step(model, optimizer, train_iterator_3i, args, step)
                     for metric in log:
                         writer.add_scalar('3i_'+metric, log[metric], step)
                     training_logs.append(log)
                 
                 if '2c' in tasks:
-                    log = query2box.train_step(query2box, optimizer, train_iterator_2, args, step)
+                    log = model.train_step(model, optimizer, train_iterator_2, args, step)
                     for metric in log:
                         writer.add_scalar('2c_'+metric, log[metric], step)
                     training_logs.append(log)
                 
                 if '3c' in tasks:
-                    log = query2box.train_step(query2box, optimizer, train_iterator_3, args, step)
+                    log = model.train_step(model, optimizer, train_iterator_3, args, step)
                     for metric in log:
                         writer.add_scalar('3c_'+metric, log[metric], step)
                     training_logs.append(log)
 
             if '1c' in tasks:
-                log = query2box.train_step(query2box, optimizer, train_iterator, args, step)
+                log = model.train_step(model, optimizer, train_iterator, args, step)
                 for metric in log:
                     writer.add_scalar('1c_'+metric, log[metric], step)
                 training_logs.append(log)
@@ -870,7 +872,7 @@ def main(args):
                 current_learning_rate = current_learning_rate / 10
                 logging.info('Change learning_rate to %f at step %d' % (current_learning_rate, step))
                 optimizer = torch.optim.Adam(
-                    filter(lambda p: p.requires_grad, query2box.parameters()), 
+                    filter(lambda p: p.requires_grad, model.parameters()),
                     lr=current_learning_rate
                 )
                 warm_up_steps = warm_up_steps * 3
@@ -881,7 +883,7 @@ def main(args):
                     'current_learning_rate': current_learning_rate,
                     'warm_up_steps': warm_up_steps
                 }
-                save_model(query2box, optimizer, save_variable_list, args)
+                save_model(model, optimizer, save_variable_list, args)
 
             if step % args.log_steps == 0:
                 metrics = {}
@@ -909,7 +911,7 @@ def main(args):
             'current_learning_rate': current_learning_rate,
             'warm_up_steps': warm_up_steps
         }
-        save_model(query2box, optimizer, save_variable_list, args)
+        save_model(model, optimizer, save_variable_list, args)
         
     try:
         print (step)

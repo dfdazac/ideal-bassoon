@@ -1078,3 +1078,100 @@ class Query2box(nn.Module):
             else:
                 metrics[metric] = sum([log[metric] for log in logs])/num_answer
         return metrics
+
+
+class RQA(nn.Module):
+    def __init__(self, model_name, nentity, nrelation, dim):
+        super(RQA, self).__init__()
+
+        self.entity_embedding = nn.Embedding(nentity, dim)
+        self.relation_embedding = nn.Embedding(nrelation, dim)
+
+        self.max_steps = 200
+        self.geo = 'vec'
+
+        # TODO: load pretrained embeddings
+
+    def forward(self, sample, rel_len, qtype, mode='single'):
+        if qtype == 'chain-inter':
+            assert mode == 'tail-batch'
+
+            # TODO
+
+        elif qtype == 'inter-chain' or qtype == 'union-chain':
+            assert mode == 'tail-batch'
+
+            # TODO
+
+        elif qtype == '2-inter' or qtype == '3-inter' or qtype == '2-union' or qtype == '3-union':
+            if mode == 'single':
+
+                # TODO
+                pass
+
+            elif mode == 'tail-batch':
+                head_part, tail_part = sample
+                batch_size, negative_sample_size = tail_part.size(0), tail_part.size(1)
+
+                with torch.no_grad():
+                    head_1 = self.entity_embedding(head_part[:, 0]).unsqueeze(1)
+                    head_2 = self.entity_embedding(head_part[:, 2]).unsqueeze(1)
+                    head = torch.cat([head_1, head_2], dim=0)
+
+                    if rel_len == 3:
+                        head_3 = self.entity_embedding(head_part[:, 4]).unsqueeze(1)
+                        head = torch.cat([head, head_3], dim=0)
+
+                    tail = self.entity_embedding(tail_part)
+
+                    relation_1 = self.relation_embedding(head_part[:, 1]).unsqueeze(1)
+                    relation_2 = self.relation_embedding(head_part[:, 3]).unsqueeze(1)
+                    relation = torch.cat([relation_1, relation_2], dim=0)
+                    if rel_len == 3:
+                        relation_3 = self.relation_embedding(head_part[:, 5]).unsqueeze(1)
+                        relation = torch.cat([relation, relation_3], dim=0)
+
+                    constants = torch.cat((head, relation), dim=1)
+
+                guess = torch.normal(0, 1e-5, head_1.shape,
+                                     device=head_1.device, requires_grad=True)
+
+                optimizer = torch.optim.Adam([guess], lr=0.1)
+                loss_value = 1e9
+                prev_loss_value = 1e10
+                i = 0
+                while i < self.max_steps and math.fabs(prev_loss_value - loss_value) > 1e-9:
+                    prev_loss_value = loss_value
+
+                    triples = torch.cat((constants, guess.expand(rel_len, -1, -1)), dim=1)
+                    scores = torch.prod(triples, dim=1).sum(dim=-1)
+                    t_norm = torch.min(scores)
+                    loss = -t_norm
+
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    loss_value = loss.item()
+
+                    i += 1
+
+        elif qtype == '1-chain' or qtype == '2-chain' or qtype == '3-chain':
+
+            # TODO
+            pass
+
+        else:
+            raise ValueError('mode %s not supported' % mode)
+
+        if self.geo == 'vec':
+            offset = None
+            head_offset = None
+        if self.geo == 'box':
+            if not self.euo:
+                head_offset = None
+
+        # TODO: this is a stub to compute a score
+        score = torch.sum(guess * tail, dim=-1)
+
+        return score, None, None, None, None, None
