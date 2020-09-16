@@ -1174,10 +1174,11 @@ class ComplEx(KBCModel):
 			1, keepdim=True
 		)
 
+	def entity_embeddings(self, indices: Tensor):
+		return self.embeddings[0](indices)
 
-	def entity_embeddings(self, indcies: Tensor):
-		return self.embeddings[0](indcies)
-
+	def relation_embeddings(self, indices: Tensor):
+		return self.embeddings[1](indices)
 
 	def candidates_score(self,
 				rel: Tensor,
@@ -1220,16 +1221,20 @@ class ComplEx(KBCModel):
 
 
 
-	def score_emb(self, lhs, rel, rhs):
+	def score_emb(self, lhs_emb, rel_emb, rhs_emb):
 
-		lhs_dub = lhs[:, :self.rank], lhs[:, self.rank:]
-		rel_dub = rel[:, :self.rank], rel[:, self.rank:]
-		rhs_dub = rhs[:, :self.rank], rhs[:, self.rank:]
+		lhs = lhs_emb[:, :self.rank], lhs_emb[:, self.rank:]
+		rel = rel_emb[:, :self.rank], rel_emb[:, self.rank:]
+		rhs = rhs_emb[:, :self.rank], rhs_emb[:, self.rank:]
 
-		return torch.mean(torch.sum(
-			(lhs_dub[0] * rel_dub[0] - lhs_dub[1] * rel_dub[1]) * rhs_dub[0] +
-			(lhs_dub[0] * rel_dub[1] + lhs_dub[1] * rel_dub[0]) * rhs_dub[1],
-			1, keepdim=True))
+		return torch.sum(
+			(lhs[0] * rel[0] - lhs[1] * rel[1]) * rhs[0] +
+			(lhs[0] * rel[1] + lhs[1] * rel[0]) * rhs[1],
+			1, keepdim=True), (
+			torch.sqrt(lhs[0] ** 2 + lhs[1] ** 2),
+			torch.sqrt(rel[0] ** 2 + rel[1] ** 2),
+			torch.sqrt(rhs[0] ** 2 + rhs[1] ** 2)
+		)
 
 
 	def forward(self, x):

@@ -108,13 +108,15 @@ def kbc_model_load(model_path):
 		identifiers = model_path.split('/')[-1]
 		identifiers = identifiers.split('-')
 
-		dataset_name, timestamp = identifiers[0].strip(),identifiers[-1][:-3].strip()
+		dataset_name, timestamp = identifiers[0].strip(), identifiers[-1][:-3].strip()
 		if "YAGO" in dataset_name:
 			dataset_name = "YAGO3-10"
+		if 'FB15k' and '237' in identifiers:
+			dataset_name = 'FB15k-237'
 
-		model_dir = os.path.join(os.getcwd(),'models')
+		model_dir = os.path.join(os.getcwd(), 'models')
 
-		with open(os.path.join(model_dir,'{}-metadata-{}.json'.format(dataset_name,timestamp)),'r') as json_file:
+		with open(os.path.join(model_dir, f'{dataset_name}-metadata-{timestamp}.json'), 'r') as json_file:
 			metadata = json.load(json_file)
 
 

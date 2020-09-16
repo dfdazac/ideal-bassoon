@@ -5,12 +5,14 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import math
+
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from .dataloader import *
 
-import math
+from .dataloader import *
+from .kbc.learn import kbc_model_load
 
 
 def Identity(x):
@@ -974,98 +976,101 @@ class Query2box(nn.Module):
         total_steps = sum([len(dataset) for dataset in test_dataset_list])
         logs = []
 
-        with torch.no_grad():
-            for test_dataset in test_dataset_list:
-                for positive_sample, negative_sample, mode, query in test_dataset:
-                    if args.cuda:
-                        positive_sample = positive_sample.cuda()
-                        negative_sample = negative_sample.cuda()
+        if not isinstance(model, RQA):
+            torch.set_grad_enabled(False)
 
-                    batch_size = positive_sample.size(0)
-                    assert batch_size == 1, batch_size
+        # with torch.no_grad():
+        for test_dataset in test_dataset_list:
+            for positive_sample, negative_sample, mode, query in test_dataset:
+                if args.cuda:
+                    positive_sample = positive_sample.cuda()
+                    negative_sample = negative_sample.cuda()
 
-                    if 'inter' in qtype:
-                        if model.geo == 'box':
-                            _, score_cen, _, score_cen_plus, _, _ = model((positive_sample, negative_sample), rel_len, qtype, mode=mode)
-                        else:
-                            score, score_cen, _, score_cen_plus, _, _ = model((positive_sample, negative_sample), rel_len, qtype, mode=mode)
+                batch_size = positive_sample.size(0)
+                assert batch_size == 1, batch_size
+
+                if 'inter' in qtype:
+                    if model.geo == 'box':
+                        _, score_cen, _, score_cen_plus, _, _ = model((positive_sample, negative_sample), rel_len, qtype, mode=mode)
                     else:
                         score, score_cen, _, score_cen_plus, _, _ = model((positive_sample, negative_sample), rel_len, qtype, mode=mode)
+                else:
+                    score, score_cen, _, score_cen_plus, _, _ = model((positive_sample, negative_sample), rel_len, qtype, mode=mode)
 
-                    if model.geo == 'box':
-                        score = score_cen
-                        score2 = score_cen_plus
+                if model.geo == 'box':
+                    score = score_cen
+                    score2 = score_cen_plus
 
-                    score -= (torch.min(score) - 1)
-                    ans = test_ans[query]
-                    hard_ans = test_ans_hard[query]
-                    all_idx = set(range(args.nentity))
-                    false_ans = all_idx - ans
-                    ans_list = list(ans)
-                    hard_ans_list = list(hard_ans)
-                    false_ans_list = list(false_ans)
-                    ans_idxs = np.array(hard_ans_list)
-                    vals = np.zeros((len(ans_idxs), args.nentity))
-                    vals[np.arange(len(ans_idxs)), ans_idxs] = 1
-                    axis2 = np.tile(false_ans_list, len(ans_idxs))
-                    axis1 = np.repeat(range(len(ans_idxs)), len(false_ans))
-                    vals[axis1, axis2] = 1
-                    b = torch.Tensor(vals) if not args.cuda else torch.Tensor(vals).cuda()
-                    filter_score = b*score
-                    argsort = torch.argsort(filter_score, dim=1, descending=True)
-                    ans_tensor = torch.LongTensor(hard_ans_list) if not args.cuda else torch.LongTensor(hard_ans_list).cuda()
-                    argsort = torch.transpose(torch.transpose(argsort, 0, 1) - ans_tensor, 0, 1)
-                    ranking = (argsort == 0).nonzero()
-                    ranking = ranking[:, 1]
-                    ranking = ranking + 1
-                    if model.geo == 'box':
-                        score2 -= (torch.min(score2) - 1)
-                        filter_score2 = b*score2
-                        argsort2 = torch.argsort(filter_score2, dim=1, descending=True)
-                        argsort2 = torch.transpose(torch.transpose(argsort2, 0, 1) - ans_tensor, 0, 1)
-                        ranking2 = (argsort2 == 0).nonzero()
-                        ranking2 = ranking2[:, 1]
-                        ranking2 = ranking2 + 1
+                score -= (torch.min(score) - 1)
+                ans = test_ans[query]
+                hard_ans = test_ans_hard[query]
+                all_idx = set(range(args.nentity))
+                false_ans = all_idx - ans
+                ans_list = list(ans)
+                hard_ans_list = list(hard_ans)
+                false_ans_list = list(false_ans)
+                ans_idxs = np.array(hard_ans_list)
+                vals = np.zeros((len(ans_idxs), args.nentity))
+                vals[np.arange(len(ans_idxs)), ans_idxs] = 1
+                axis2 = np.tile(false_ans_list, len(ans_idxs))
+                axis1 = np.repeat(range(len(ans_idxs)), len(false_ans))
+                vals[axis1, axis2] = 1
+                b = torch.Tensor(vals) if not args.cuda else torch.Tensor(vals).cuda()
+                filter_score = b*score
+                argsort = torch.argsort(filter_score, dim=1, descending=True)
+                ans_tensor = torch.LongTensor(hard_ans_list) if not args.cuda else torch.LongTensor(hard_ans_list).cuda()
+                argsort = torch.transpose(torch.transpose(argsort, 0, 1) - ans_tensor, 0, 1)
+                ranking = (argsort == 0).nonzero()
+                ranking = ranking[:, 1]
+                ranking = ranking + 1
+                if model.geo == 'box':
+                    score2 -= (torch.min(score2) - 1)
+                    filter_score2 = b*score2
+                    argsort2 = torch.argsort(filter_score2, dim=1, descending=True)
+                    argsort2 = torch.transpose(torch.transpose(argsort2, 0, 1) - ans_tensor, 0, 1)
+                    ranking2 = (argsort2 == 0).nonzero()
+                    ranking2 = ranking2[:, 1]
+                    ranking2 = ranking2 + 1
 
-                    ans_vec = np.zeros(args.nentity)
-                    ans_vec[ans_list] = 1
-                    hits1 = torch.sum((ranking <= 1).to(torch.float)).item()
-                    hits3 = torch.sum((ranking <= 3).to(torch.float)).item()
-                    hits10 = torch.sum((ranking <= 10).to(torch.float)).item()
-                    mr = float(torch.sum(ranking).item())
-                    mrr = torch.sum(1./ranking.to(torch.float)).item()
-                    hits1m = torch.mean((ranking <= 1).to(torch.float)).item()
-                    hits3m = torch.mean((ranking <= 3).to(torch.float)).item()
-                    hits10m = torch.mean((ranking <= 10).to(torch.float)).item()
-                    mrm = torch.mean(ranking.to(torch.float)).item()
-                    mrrm = torch.mean(1./ranking.to(torch.float)).item()
-                    num_ans = len(hard_ans_list)
-                    if model.geo == 'box':
-                        hits1m_newd = torch.mean((ranking2 <= 1).to(torch.float)).item()
-                        hits3m_newd = torch.mean((ranking2 <= 3).to(torch.float)).item()
-                        hits10m_newd = torch.mean((ranking2 <= 10).to(torch.float)).item()
-                        mrm_newd = torch.mean(ranking2.to(torch.float)).item()
-                        mrrm_newd = torch.mean(1./ranking2.to(torch.float)).item()
-                    else:
-                        hits1m_newd = hits1m
-                        hits3m_newd = hits3m
-                        hits10m_newd = hits10m
-                        mrm_newd = mrm
-                        mrrm_newd = mrrm
+                ans_vec = np.zeros(args.nentity)
+                ans_vec[ans_list] = 1
+                hits1 = torch.sum((ranking <= 1).to(torch.float)).item()
+                hits3 = torch.sum((ranking <= 3).to(torch.float)).item()
+                hits10 = torch.sum((ranking <= 10).to(torch.float)).item()
+                mr = float(torch.sum(ranking).item())
+                mrr = torch.sum(1./ranking.to(torch.float)).item()
+                hits1m = torch.mean((ranking <= 1).to(torch.float)).item()
+                hits3m = torch.mean((ranking <= 3).to(torch.float)).item()
+                hits10m = torch.mean((ranking <= 10).to(torch.float)).item()
+                mrm = torch.mean(ranking.to(torch.float)).item()
+                mrrm = torch.mean(1./ranking.to(torch.float)).item()
+                num_ans = len(hard_ans_list)
+                if model.geo == 'box':
+                    hits1m_newd = torch.mean((ranking2 <= 1).to(torch.float)).item()
+                    hits3m_newd = torch.mean((ranking2 <= 3).to(torch.float)).item()
+                    hits10m_newd = torch.mean((ranking2 <= 10).to(torch.float)).item()
+                    mrm_newd = torch.mean(ranking2.to(torch.float)).item()
+                    mrrm_newd = torch.mean(1./ranking2.to(torch.float)).item()
+                else:
+                    hits1m_newd = hits1m
+                    hits3m_newd = hits3m
+                    hits10m_newd = hits10m
+                    mrm_newd = mrm
+                    mrrm_newd = mrrm
 
-                    logs.append({
-                        'MRRm_new': mrrm_newd,
-                        'MRm_new': mrm_newd,
-                        'HITS@1m_new': hits1m_newd,
-                        'HITS@3m_new': hits3m_newd,
-                        'HITS@10m_new': hits10m_newd,
-                        'num_answer': num_ans
-                    })
+                logs.append({
+                    'MRRm_new': mrrm_newd,
+                    'MRm_new': mrm_newd,
+                    'HITS@1m_new': hits1m_newd,
+                    'HITS@3m_new': hits3m_newd,
+                    'HITS@10m_new': hits10m_newd,
+                    'num_answer': num_ans
+                })
 
-                    if step % args.test_log_steps == 0:
-                        logging.info('Evaluating the model... (%d/%d)' % (step, total_steps))
+                if step % args.test_log_steps == 0:
+                    logging.info('Evaluating the model... (%d/%d)' % (step, total_steps))
 
-                    step += 1
+                step += 1
 
         metrics = {}
         num_answer = sum([log['num_answer'] for log in logs])
@@ -1080,16 +1085,13 @@ class Query2box(nn.Module):
 
 
 class RQA(nn.Module):
-    def __init__(self, model_name, nentity, nrelation, dim):
+    def __init__(self, model_path):
         super(RQA, self).__init__()
 
-        self.entity_embedding = nn.Embedding(nentity, dim)
-        self.relation_embedding = nn.Embedding(nrelation, dim)
+        self.kbc, *_ = kbc_model_load(model_path)
 
         self.max_steps = 200
         self.geo = 'vec'
-
-        # TODO: load pretrained embeddings
 
     def forward(self, sample, rel_len, qtype, mode='single'):
         if qtype == 'chain-inter':
@@ -1113,28 +1115,22 @@ class RQA(nn.Module):
                 batch_size, negative_sample_size = tail_part.size(0), tail_part.size(1)
 
                 with torch.no_grad():
-                    head_1 = self.entity_embedding(head_part[:, 0]).unsqueeze(1)
-                    head_2 = self.entity_embedding(head_part[:, 2]).unsqueeze(1)
+                    head_1 = self.kbc.model.entity_embeddings(head_part[:, 0])
+                    head_2 = self.kbc.model.entity_embeddings(head_part[:, 2])
                     head = torch.cat([head_1, head_2], dim=0)
 
                     if rel_len == 3:
-                        head_3 = self.entity_embedding(head_part[:, 4]).unsqueeze(1)
+                        head_3 = self.kbc.model.entity_embeddings(head_part[:, 4])
                         head = torch.cat([head, head_3], dim=0)
 
-                    tail = self.entity_embedding(tail_part)
-
-                    relation_1 = self.relation_embedding(head_part[:, 1]).unsqueeze(1)
-                    relation_2 = self.relation_embedding(head_part[:, 3]).unsqueeze(1)
+                    relation_1 = self.kbc.model.relation_embeddings(head_part[:, 1])
+                    relation_2 = self.kbc.model.relation_embeddings(head_part[:, 3])
                     relation = torch.cat([relation_1, relation_2], dim=0)
                     if rel_len == 3:
-                        relation_3 = self.relation_embedding(head_part[:, 5]).unsqueeze(1)
+                        relation_3 = self.kbc.model.relation_embeddings(head_part[:, 5])
                         relation = torch.cat([relation, relation_3], dim=0)
 
-                    constants = torch.cat((head, relation), dim=1)
-
-                guess = torch.normal(0, 1e-5, head_1.shape,
-                                     device=head_1.device, requires_grad=True)
-
+                guess = torch.normal(0, 1e-5, (1, head_1.shape[1]), device=head_1.device, requires_grad=True)
                 optimizer = torch.optim.Adam([guess], lr=0.1)
                 loss_value = 1e9
                 prev_loss_value = 1e10
@@ -1142,10 +1138,11 @@ class RQA(nn.Module):
                 while i < self.max_steps and math.fabs(prev_loss_value - loss_value) > 1e-9:
                     prev_loss_value = loss_value
 
-                    triples = torch.cat((constants, guess.expand(rel_len, -1, -1)), dim=1)
-                    scores = torch.prod(triples, dim=1).sum(dim=-1)
+                    tail = guess.expand(rel_len, -1)
+
+                    scores, factors = self.kbc.model.score_emb(head, relation, tail)
                     t_norm = torch.min(scores)
-                    loss = -t_norm
+                    loss = -t_norm + self.kbc.regularizer([factors[2]])
 
                     optimizer.zero_grad()
                     loss.backward()
@@ -1170,7 +1167,8 @@ class RQA(nn.Module):
             if not self.euo:
                 head_offset = None
 
-        # TODO: this is a stub to compute a score
-        score = torch.sum(guess * tail, dim=-1)
+        with torch.no_grad():
+            tail_emb = self.kbc.model.entity_embeddings(tail_part.squeeze())
+            scores = guess @ tail_emb.t()
 
-        return score, None, None, None, None, None
+        return scores, None, None, None, None, None

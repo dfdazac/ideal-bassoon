@@ -15,8 +15,8 @@ import torch
 
 from torch.utils.data import DataLoader
 
-from model import Query2box, RQA
-from dataloader import *
+from .model import Query2box, RQA
+from .dataloader import *
 from torch.utils.tensorboard import SummaryWriter
 import time
 import pickle
@@ -47,6 +47,7 @@ def parse_args(args=None):
     
     parser.add_argument('--data_path', type=str, default=None)
     parser.add_argument('--model', default='TransE', type=str)
+    parser.add_argument('--kbc_path', type=str)
     
     parser.add_argument('-n', '--negative_sample_size', default=128, type=int)
     parser.add_argument('-d', '--hidden_dim', default=500, type=int)
@@ -469,7 +470,7 @@ def main(args):
         logging.info('#test_uc: %d' % len(test_triples_uc))
 
     if args.model == 'RQA':
-        model = RQA('test', nentity, nrelation, args.hidden_dim)
+        model = RQA(args.kbc_path)
     else:
         model = Query2box(
             model_name=args.model,
