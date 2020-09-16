@@ -10,9 +10,9 @@ import json
 import time
 import argparse
 from typing import Dict
-
 import torch
 from torch import optim
+from pprint import pprint
 
 from .datasets import Dataset
 from .models import CP, ComplEx
@@ -81,10 +81,8 @@ def train_kbc(KBC_optimizer, dataset, args):
 				with open(os.path.join(model_dir,'{}-metadata-{}.json'.format(args.dataset,timestamp)), 'w') as json_file:
 					json.dump(vars(args), json_file)
 
-
-
 		results = dataset.eval(model, 'test', -1)
-		print("\n\nTEST : ", results)
+		print("\n\nTEST : ", avg_both(*results))
 
 	except RuntimeError as e:
 		print("Training was interupted with error {}".format(str(e)))
@@ -268,16 +266,12 @@ if __name__ == "__main__":
 	)
 
 	args = parser.parse_args()
+
 	args.dataset = os.path.basename(args.path)
-
-
 
 	dataset = Dataset(os.path.join(args.path, 'kbc_data'))
 	args.data_shape = dataset.get_shape()
 	examples = torch.from_numpy(dataset.get_train().astype('int64'))
-
-	print(len(examples))
-
 
 	model = {
 		'CP': lambda: CP(dataset.get_shape(), args.rank, args.init),
@@ -293,7 +287,7 @@ if __name__ == "__main__":
 	model.to(device)
 
 
-	print(vars(args))
+	pprint(vars(args))
 	optim_method = {
 		'Adagrad': lambda: optim.Adagrad(model.parameters(), lr=args.learning_rate),
 		'Adam': lambda: optim.Adam(model.parameters(), lr=args.learning_rate, betas=(args.decay1, args.decay2)),
@@ -304,7 +298,7 @@ if __name__ == "__main__":
 
 	curve, results = train_kbc(KBC_optimizer,dataset,args)
 
-	print(curve, results)
+	# print(curve, results)
 
 
 	# print(dataset_to_query(args.dataset))

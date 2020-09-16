@@ -28,3 +28,21 @@ Please consider cite our paper if you find the paper and the code useful.
 ```
 
 Feel free to send email to hyren@cs.stanford.edu if you have any questions. This code also borrows from [RotatE](https://github.com/DeepGraphLearning/KnowledgeGraphEmbedding).
+
+## Training KBC
+
+These following instructions apply to FB15k-237.
+
+To transform the Freebase entity and relation IDs to the identifiers used in Query2Box, run
+
+```
+python -m codes.kbc.process_datasets data/FB15k-237/
+```
+
+Then, to train the embeddings, run
+
+```
+python -m codes.kbc.learn data/FB15k-237 --model ComplEx \
+--max_epochs 30 --model_save_schedule 10 --valid 10 --reg 5e-2 \
+--batch_size 1024 --rank 256
+```
