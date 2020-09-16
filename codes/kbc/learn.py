@@ -14,10 +14,10 @@ from typing import Dict
 import torch
 from torch import optim
 
-from kbc.datasets import Dataset
-from kbc.models import CP, ComplEx
-from kbc.regularizers import N2, N3
-from kbc.optimizers import KBCOptimizer
+from .datasets import Dataset
+from .models import CP, ComplEx
+from .regularizers import N2, N3
+from .optimizers import KBCOptimizer
 
 
 def avg_both(mrrs: Dict[str, float], hits: Dict[str, torch.FloatTensor]):
@@ -204,8 +204,7 @@ if __name__ == "__main__":
 
 
 	parser.add_argument(
-		'--dataset', choices=datasets,
-		help="Dataset in {}".format(datasets)
+		'path'
 	)
 
 	models = ['CP', 'ComplEx']
@@ -269,8 +268,11 @@ if __name__ == "__main__":
 	)
 
 	args = parser.parse_args()
+	args.dataset = os.path.basename(args.path)
 
-	dataset = Dataset(args.dataset)
+
+
+	dataset = Dataset(os.path.join(args.path, 'kbc_data'))
 	args.data_shape = dataset.get_shape()
 	examples = torch.from_numpy(dataset.get_train().astype('int64'))
 

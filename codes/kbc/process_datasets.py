@@ -8,7 +8,6 @@ import argparse
 import os
 import errno
 import shutil
-from pathlib import Path
 import pickle
 
 import numpy as np
@@ -83,35 +82,35 @@ def prepare_dataset(path):
     os.makedirs(out_path)
     # write ent to id / rel to id
     for (dic, f) in zip([entities_to_id, relations_to_id], ['ent_id', 'rel_id']):
-        ff = open(os.path.join(out_path, f), 'w+')
-        for (x, i) in dic.items():
-            ff.write("{}\t{}\n".format(x, i))
-        ff.close()
+        pickle.dump(dic, open(os.path.join(out_path, f'{f}.pickle'), 'wb'))
 
     # map train/test/valid with the ids
+    to_skip = {'lhs': defaultdict(set), 'rhs': defaultdict(set)}
     for f in files:
         file_path = os.path.join(path, f)
         to_read = open(file_path, 'r')
         examples = []
         for line in to_read.readlines():
             lhs, rel, rhs = line.strip().split('\t')
-            try:
-                examples.append([entities_to_id[lhs], relations_to_id[rel], entities_to_id[rhs]])
-            except ValueError:
-                continue
+
+            lhs_id = entities_to_id[lhs]
+            rhs_id = entities_to_id[rhs]
+            rel_id = relations_to_id[rel]
+            inv_rel_id = relations_to_id[rel + '_reverse']
+
+            examples.append([lhs_id, rel_id, rhs_id])
+            to_skip['rhs'][(lhs_id, rel_id)].add(rhs_id)
+            to_skip['lhs'][(rhs_id, inv_rel_id)].add(lhs_id)
+
+            # Add inverse relations for training
+            if f == 'train.txt':
+                examples.append([rhs_id, inv_rel_id, lhs_id])
+                to_skip['rhs'][(rhs_id, inv_rel_id)].add(lhs_id)
+                to_skip['lhs'][(lhs_id, rel_id)].add(rhs_id)
+
         out = open(os.path.join(out_path, f + '.pickle'), 'wb')
         pickle.dump(np.array(examples).astype('uint64'), out)
         out.close()
-
-    print("Creating filtering lists")
-
-    # create filtering files
-    to_skip = {'lhs': defaultdict(set), 'rhs': defaultdict(set)}
-    for f in files:
-        examples = pickle.load(open(os.path.join(out_path, f + '.pickle'), 'rb'))
-        for lhs, rel, rhs in examples:
-            to_skip['lhs'][(rhs, rel + n_relations)].add(lhs)  # reciprocals
-            to_skip['rhs'][(lhs, rel)].add(rhs)
 
     to_skip_final = {'lhs': {}, 'rhs': {}}
     for kk, skip in to_skip.items():

@@ -12,16 +12,15 @@ import torch
 from torch import nn
 from torch import optim
 from torch import Tensor
-from torch.autograd import Variable
 
-from kbc.regularizers import Regularizer
+from .regularizers import Regularizer
 import tqdm
 
 import gc
 
-from kbc.utils import QuerDAG
-from kbc.utils import check_gpu
-from kbc.utils import DynKBCSingleton
+from .utils import QuerDAG
+from .utils import check_gpu
+from .utils import DynKBCSingleton
 
 
 class KBCModel(nn.Module, ABC):
