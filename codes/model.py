@@ -1090,7 +1090,7 @@ class RQA(nn.Module):
 
         self.kbc, *_ = kbc_model_load(model_path)
 
-        self.max_steps = 200
+        self.max_steps = 50
         self.geo = 'vec'
 
     def forward(self, sample, rel_len, qtype, mode='single'):
@@ -1135,13 +1135,14 @@ class RQA(nn.Module):
                 loss_value = 1e9
                 prev_loss_value = 1e10
                 i = 0
+                losses = []
                 while i < self.max_steps and math.fabs(prev_loss_value - loss_value) > 1e-9:
                     prev_loss_value = loss_value
 
                     tail = guess.expand(rel_len, -1)
 
                     scores, factors = self.kbc.model.score_emb(head, relation, tail)
-                    t_norm = torch.min(scores)
+                    t_norm = torch.prod(torch.sigmoid(scores))
                     loss = -t_norm + self.kbc.regularizer([factors[2]])
 
                     optimizer.zero_grad()
@@ -1149,6 +1150,7 @@ class RQA(nn.Module):
                     optimizer.step()
 
                     loss_value = loss.item()
+                    losses.append(loss_value)
 
                     i += 1
 

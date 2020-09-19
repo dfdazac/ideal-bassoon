@@ -1158,6 +1158,8 @@ class ComplEx(KBCModel):
 		self.embeddings[0].weight.data *= init_size
 		self.embeddings[1].weight.data *= init_size
 
+		self.max_norms = None
+
 
 	def score(self, x):
 		lhs = self.embeddings[0](x[:, 0])
@@ -1236,6 +1238,18 @@ class ComplEx(KBCModel):
 			torch.sqrt(rhs[0] ** 2 + rhs[1] ** 2)
 		)
 
+	@torch.no_grad()
+	def renorm_emb_(self, x):
+		if self.max_norms is None:
+			all_embs = self.embeddings[0].weight
+			all_embs = all_embs[:, :self.rank], all_embs[:, self.rank:]
+			max_re_norm = torch.norm(all_embs[0], dim=-1).max().item()
+			max_im_norm = torch.norm(all_embs[1], dim=-1).max().item()
+			self.max_norms = (max_re_norm, max_im_norm)
+
+		re_norm, im_norm = self.max_norms
+		x[:, :self.rank] = x[:, :self.rank].renorm(p=2, dim=-1, maxnorm=re_norm)
+		x[:, self.rank:] = x[:, self.rank:].renorm(p=2, dim=-1, maxnorm=im_norm)
 
 	def forward(self, x):
 		lhs = self.embeddings[0](x[:, 0])
