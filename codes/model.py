@@ -1142,7 +1142,10 @@ class RQA(nn.Module):
                     tail = guess.expand(rel_len, -1)
 
                     scores, factors = self.kbc.model.score_emb(head, relation, tail)
-                    t_norm = torch.prod(torch.sigmoid(scores))
+                    scores = torch.sigmoid(scores)
+                    t_norm = torch.prod(scores)
+                    if qtype in ['2-union', '3-union']:
+                        t_norm = torch.sum(scores) - t_norm
                     loss = -t_norm + self.kbc.regularizer([factors[2]])
 
                     optimizer.zero_grad()
